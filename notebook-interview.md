@@ -164,3 +164,63 @@ While SpecMine tracks the artifacts resulting from Spec-Driven Development (SDD)
 ---
 
 💡 **Research Idea:** Would you like to see how you could combine SpecMine's PR layer with external GitHub API data (such as GitHub Actions check runs) to evaluate build success for a subset of repositories?
+
+---
+
+prompt 6:
+for the research question: Do specifications with more explicit acceptance criteria, structured 
+scenarios, or file references predict fewer downstream fixes, what would be the best way to learn what types of criteria are currently being used by developers for a specific specs?
+
+response 6:
+To determine what types of acceptance criteria, scenario formats, or file references developers currently use in their specifications, the **SpecMine** dataset provides two complementary approaches: **quantitative feature aggregation** using pre-parsed schema tables and **qualitative text mining** over raw specification files.
+
+---
+
+### 1. Quantitative Feature Analysis via `spec_content_features`
+
+The most direct way to identify criteria types at scale is through SpecMine’s **`spec_content_features`** table. The dataset creators run a structured extraction pipeline across specifications that computes **39 structural and requirement-template features** per file.
+
+By querying `spec_content_features`, you can immediately measure the prevalence of:
+* **Requirement Syntaxes & Templates:** The frequency of explicit structural patterns such as **EARS** (Easy Approach to Requirements Syntax), **Gherkin** (`Given / When / Then` scenarios), and **User Story** structures.
+* **Acceptance Criteria & Testability:** Presence of explicit verification criteria, checkbox task lists (`[ ]`), testability indicators, and unfilled template placeholders.
+* **Structural Reference Density:** Counts of explicit code file paths, URL links, issue references, and section header depth.
+
+*Example SQL strategy:*
+```sql
+SELECT 
+    f.spec_tool,
+    AVG(c.has_ears_syntax) AS ears_ratio,
+    AVG(c.has_gherkin_scenarios) AS gherkin_ratio,
+    AVG(c.has_acceptance_criteria) AS criteria_ratio,
+    AVG(c.unfilled_placeholders_count) AS avg_placeholders
+FROM spec_content_features c
+JOIN spec_files f ON c.file_url_sha16 = f.file_url_sha16
+GROUP BY f.spec_tool;
+```
+
+---
+
+### 2. Qualitative Text Mining & Taxonomy Discovery via Raw Spec Archives
+
+To discover specific, domain-dependent criteria types that fall outside the 39 pre-parsed features (e.g., distinguishing between *functional behavior*, *security constraints*, *performance SLAs*, or *UI/UX guidelines*), you can mine the raw specification text:
+
+* **Broad Census Specs (`specs.jsonl.gz`):** Contains raw Markdown content for broad-census specifications across 17 named tools.
+* **Kiro Census (`kiro_specs.jsonl.gz` / `kiro_files`):** Contains specialized `requirements.md`, `design.md`, and `tasks.md` files.
+* **OpenSpec Artifacts (`openspec_artifact_files`):** Contains proposals, designs, and task lists.
+
+**Workflow for Taxonomy Discovery:**
+1. **Sample & Extract:** Draw a representative sample of specs stratified by tool family (`spec_tool`) or repository popularity.
+2. **NLP / Topic Modeling / Zero-Shot Classification:** Apply pattern matching or LLM-based extraction (e.g., prompting a classifier to categorize Markdown headers like `## Acceptance Criteria`, `## Non-Functional Requirements`, `## Scenarios`).
+3. **Cluster Criteria:** Group extracted bullet points into a grounded taxonomy of criteria types (e.g., API contracts, edge-case handling, environment prerequisites).
+
+---
+
+### 3. Traceability Link Analysis via `spec_links`
+
+If you are specifically interested in how developers reference code files within acceptance criteria, use the **`spec_links`** table. 
+
+SpecMine indexes **2.42 million typed references**, including **1.28 million direct code file references**, 863k sibling document links, and 22k issue references. Filtering `spec_links` by `ref_type = 'code_file'` reveals whether developers cite specific functions, exact file paths, or entire directories within their requirements.
+
+---
+
+💡 *Would you like me to run a Python script over the local SpecMine sample dataset to inspect the actual column schema and feature distributions in `spec_content_features`?*
