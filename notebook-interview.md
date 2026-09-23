@@ -224,3 +224,132 @@ SpecMine indexes **2.42 million typed references**, including **1.28 million dir
 ---
 
 💡 *Would you like me to run a Python script over the local SpecMine sample dataset to inspect the actual column schema and feature distributions in `spec_content_features`?*
+
+## Prompt 7
+Prompt given to Notebook: Based on the provided sources, do you believe that our proposed research question is feasible? For reference, we chose the research question: Do specifications with more explicit acceptance criteria, structured scenarios, or file references predict fewer downstream fixes?  Our required implementtion includes building a specification-quality scorer and connect it to later commits, pull requests, issue closures, or fix-like changes. Our backlog consists of: Finish setting up the GitHub environment, Read Assignment, Read MSR challenge, Watch videos, Set up environment for viewing datasets, Learn criteria used by other developers, Find corresponding criteria for our specific spec, Compare our spec with similar ones, Learn what criteria should be used based on spec comparison, Gather problems, Gather free agents, Develop solution, Test solution with existing specs as input, Use recommendation algorithm, Use ranking algorithm, Create quality rubric for Spec comparisons. Also, on a scale from 1 to 10, how feasible is it?
+
+AI Response: Your proposed research question is **highly feasible** and directly aligns with the objectives of the dataset.
+
+---
+
+### **Feasibility Rating: 9 / 10**
+
+Your research question—*“Do specifications with more explicit acceptance criteria, structured scenarios, or file references predict fewer downstream fixes?”*—is almost an exact match for one of the primary research directions proposed in the official **MSR 2027 Mining Challenge** call for papers under the **SpecMine** corpus:
+
+> *"Do higher-quality specs predict smoother downstream implementation (fewer follow-up fixes)..."*
+
+---
+
+### **How the Dataset Supports Your Required Implementation**
+
+The **SpecMine** dataset provides structured tables that map directly to both halves of your proposed implementation:
+
+#### **1. Building a Specification-Quality Scorer**
+* **`spec_content_features`**: Contains 39 pre-parsed structural and requirement-template features per specification (such as structural layout, section headers, and template compliance).
+* **`spec_links` & `openspec_code_refs`**: Contains a census-wide traceability index of over 2.4 million typed references—including 1.28 million direct references to code files—allowing you to quantify explicit file references and density.
+* **Raw Text Archives (`specs.jsonl.gz` & `kiro_specs.jsonl.gz`)**: Contain the full Markdown content for broad-census and Kiro specifications, allowing you to run custom NLP parsers or pattern matchers for structured scenarios (e.g., Gherkin `Given/When/Then`, EARS syntax, or explicit acceptance criteria checklists).
+
+#### **2. Connecting Quality to Downstream Fixes**
+* **`pull_requests` & `pr_files`**: Union 5,992 spec-touching pull requests across 581 repositories with per-file changesets flagged as `spec` or `code`.
+* **`spec_file_commits`**: Provides per-file commit histories (780,000+ commits) to trace churn and follow-up edits over time.
+* **`kiro_files`**: Categorizes specifications into explicit kinds, including `requirements.md`, `design.md`, `tasks.md`, and `bugfix.md`, making fix-oriented artifacts explicitly observable.
+
+---
+
+### **Backlog Feedback & Recommendations**
+
+Your current backlog includes many strong operational steps (e.g., reading MSR documentation, setting up the dataset viewer, and creating a quality rubric). However, a few items could cause scope creep or divert you from an empirical mining paper:
+
+* **Corpus Mining vs. Single-Spec Analysis**: Items like *"Find corresponding criteria for our specific spec"* and *"Compare our spec with similar ones"* suggest evaluating a single specification written by your team. The core value of SpecMine lies in analyzing trends across thousands of public repositories.
+* **Feature Scope Creep**: Items such as *"Gather free agents"*, *"Use recommendation algorithm"*, and *"Use ranking algorithm"* are typical for agent-building projects, but may add unnecessary overhead for an empirical software engineering paper focused on statistical prediction/regression.
+
+#### **Suggested Core Backlog Structure**
+1. **Environment & Data Setup**: Load the 500-repository SpecMine sample using DuckDB or Pandas.
+2. **Feature Extraction (Quality Scorer)**: Combine pre-built features from `spec_content_features` and `spec_links` count with regex/NLP detection for explicit acceptance criteria and scenarios.
+3. **Fix Operationalization**: Identify fix-like changes via PR titles/commit messages (`bug`, `fix`, `patch`) or follow-up commits/PRs touching code files referenced in `spec_links`.
+4. **Statistical Analysis**: Run a negative binomial or Poisson regression to test whether higher specification quality scores correlate with a reduced count of downstream fix commits or PRs.
+
+---
+
+💡 **Next Step**: Would you like to write a quick DuckDB/Python script using the `data/spec_content_features.parquet` and `data/pull_requests.parquet` sample files to inspect the available quality features and PR fields?
+
+
+## Prompt 8
+Prompt given to Notebook: What would the database schema of our project comprise of?
+
+AI Response: To answer your research question, your database schema needs to bridge **raw specification attributes**, **calculated quality metrics**, and **downstream fix/churn events**. 
+
+Based on the structure of the **SpecMine** dataset, a clean relational schema for your project would comprise **four core entity groups** and an **aggregated analytical view**:
+
+---
+
+### **1. Core Specification Metadata (`specifications`)**
+*Stores basic metadata and raw content references derived from SpecMine's `spec_files` and `kiro_files`.*
+* **`spec_id`** *(Primary Key)*: Unique identifier for each spec (hash or composite key).
+* **`repo_name`**: Repository full name (e.g., `owner/repo`).
+* **`file_path`**: Path to the specification file (e.g., `.kiro/specs/feature/requirements.md`).
+* **`tool_name`**: SDD tool used (e.g., `Kiro`, `OpenSpec`, `SpecKit`).
+* **`spec_kind`**: Document category (`requirements`, `design`, `tasks`, `bugfix`).
+* **`first_commit_at`**: Timestamp when the specification was first created.
+
+---
+
+### **2. Specification Quality Scores (`spec_quality_metrics`)**
+*Stores pre-calculated features from SpecMine's `spec_content_features` alongside your custom Scorer metrics.*
+* **`metric_id`** *(Primary Key)*
+* **`spec_id`** *(Foreign Key \\(\rightarrow\\) `specifications`)*
+* **`acceptance_criteria_score`**: Count/boolean for explicit acceptance criteria checklists or EARS/Gherkin criteria.
+* **`structured_scenarios_count`**: Number of structured scenario blocks (`Given/When/Then`, step checklists).
+* **`explicit_file_refs_count`**: Count of explicit code file paths referenced in the spec (extracted via `spec_links`).
+* **`structural_complexity_score`**: Aggregate score derived from SpecMine's 39 structural/template features.
+* **`composite_quality_score`**: Final normalized score produced by your Specification Quality Rubric.
+
+---
+
+### **3. Code Traceability Index (`spec_code_links`)**
+*Maps specifications to the target code files they declare or modify, derived from SpecMine's `spec_links` and `openspec_code_refs`.*
+* **`link_id`** *(Primary Key)*
+* **`spec_id`** *(Foreign Key \\(\rightarrow\\) `specifications`)*
+* **`target_file_path`**: Path to the referenced code file (e.g., `src/auth/login.py`).
+* **`link_type`**: Type of reference (`code_file`, `sibling_doc`, `pull_request`, `issue`).
+
+---
+
+### **4. Downstream Code Changes & Fixes (`downstream_changes`)**
+*Tracks subsequent commits, pull requests, and bug fixes linked to the specification or its referenced code files, built from `pull_requests`, `pr_files`, and `spec_file_commits`.*
+* **`change_id`** *(Primary Key)*
+* **`spec_id`** *(Foreign Key \\(\rightarrow\\) `specifications`)*
+* **`referenced_file_path`**: Path of the code file modified in this change.
+* **`pr_number` / `commit_sha`**: PR number or commit hash.
+* **`created_at`**: Timestamp of the commit or PR.
+* **`is_same_pr_cochange`**: Boolean flag indicating if code changed in the *same* initial PR as the spec (`touches_code == 1`).
+* **`is_fix_change`**: Boolean flag marking whether the commit/PR is a downstream fix (flagged via commit message keywords like `bug`/`fix`/`patch` or linking to `bugfix.md` specs).
+
+---
+
+### **5. Analytical Summary Dataset (`spec_fix_analysis_view`)**
+*An aggregated view or table joining quality metrics with downstream fix counts for regression modeling.*
+
+```sql
+CREATE VIEW spec_fix_analysis_view AS
+SELECT 
+    s.spec_id,
+    s.repo_name,
+    s.tool_name,
+    q.acceptance_criteria_score,
+    q.structured_scenarios_count,
+    q.explicit_file_refs_count,
+    q.composite_quality_score,
+    COUNT(DISTINCT CASE WHEN c.is_fix_change = 1 THEN c.change_id END) AS downstream_fix_count,
+    COUNT(DISTINCT c.pr_number) AS total_downstream_prs
+FROM specifications s
+JOIN spec_quality_metrics q ON s.spec_id = q.spec_id
+LEFT JOIN downstream_changes c ON s.spec_id = c.spec_id
+GROUP BY s.spec_id, s.repo_name, s.tool_name, 
+         q.acceptance_criteria_score, q.structured_scenarios_count, 
+         q.explicit_file_refs_count, q.composite_quality_score;
+```
+
+---
+
+🗄️ **Next Step**: Would you like help drafting the Python or SQL code to populate the `spec_quality_metrics` table directly from SpecMine's `spec_content_features.parquet` and `spec_links.parquet` sample files?
