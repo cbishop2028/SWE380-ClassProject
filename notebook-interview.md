@@ -142,3 +142,25 @@ In empirical software engineering literature, files with frequent defect reports
 ---
 
 💡 *Would you like me to construct a DuckDB or Pandas query over the SpecMine sample dataset to demonstrate how to join `spec_content_features` with `spec_links` and PR revision counts?*
+
+Prompt 5:
+Does SpecMine establish whether an AI agent successfully generated working code?
+
+Response 5: 
+**No, SpecMine does not directly establish whether an AI agent successfully generated working code.** 
+
+While SpecMine tracks the artifacts resulting from Spec-Driven Development (SDD), it focuses on static repository files, commit histories, and pull request changesets rather than runtime test execution.
+
+### What SpecMine *Does* Capture
+* **Co-Change in Pull Requests:** SpecMine records spec-touching pull requests in the `pull_requests` and `pr_files` tables (5,992 PRs across 581 repositories). This lets you observe whether a specification and implementation code changed together in the same PR (`touches_code = 1`).
+* **Traceability Links:** It provides a census-wide index of 2,421,323 typed references (`spec_links`) and OpenSpec git-tree references (`openspec_code_refs`), linking specs directly to specific code files, PRs, or commits.
+* **PR and Commit Outcomes:** You can see git commit metadata and whether a spec-touching pull request was merged into the default branch or closed without merging.
+
+### What SpecMine *Does Not* Establish
+* **CI/CD Build & Test Results:** SpecMine does not record continuous integration (CI) test suite execution outputs, build statuses, or pass/fail rates.
+* **Runtime Behavior & Code Correctness:** It does not evaluate whether the generated code executes without errors, meets performance benchmarks, or introduces post-merge bugs.
+* **Unobservable Agent Context:** The internal process of how an AI agent interprets a specification and drafts code occurs interactively or locally, making the generation process itself not directly observable from GitHub repository artifacts alone.
+
+---
+
+💡 **Research Idea:** Would you like to see how you could combine SpecMine's PR layer with external GitHub API data (such as GitHub Actions check runs) to evaluate build success for a subset of repositories?
