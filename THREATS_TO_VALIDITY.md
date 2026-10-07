@@ -1,4 +1,4 @@
 - We are using a sample for sprint 1 instead of the full dataset. This could cause an issue with how correct our results are.
-- Initially, we used a local verion of the code rather than one that was accessible to any user.
+- Initially, we used a local version of the code rather than one that was accessible to any user.
 - The majority of the specs in our dataset are no older than a year, meaning they may not have been around long enough to display results that would correctly reflect an accurate response.
-- The size of the original dataset is rather large
+- The size of the original dataset is rather large, which can make sifting through all of the available specs difficult. 
