@@ -1,0 +1,12 @@
+
+# Local datasets and reproducible generated artifacts
+/data/
+/specmine-zenodo/
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp/
+/outputs/
+/results/
+/figures/
+__pycache__/
+.venv/

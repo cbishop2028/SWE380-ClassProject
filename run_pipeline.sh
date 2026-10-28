@@ -11,10 +11,4 @@ else
   PY=python
 fi
 
-echo "Step 1/2: building the database..."
-$PY src/build_db.py
-
-echo "Step 2/2: running the analysis..."
-$PY src/explore.py "$@"
-
-echo "Pipeline finished."
+"$PY" run_pipeline.py "$@"
