@@ -60,8 +60,7 @@ FROM commits
 GROUP BY file_url_sha16
 """)
 
-# 3. Only keep specs that were created at least WINDOW_DAYS before the data ends,
-#    so every spec gets a full window to collect fixes
+# 3. Only keep specs that were created at least WINDOW_DAYS before the data ends
 sql(r"""
 CREATE TEMP VIEW eligible_specs AS
 SELECT s.*
@@ -93,7 +92,7 @@ WHERE in_window AND NOT is_merge AND NOT is_bot
 GROUP BY file_url_sha16
 """)
 
-# 5. Join to the spec features
+# 5. Join to the spec features and quality scores
 spec_filter = """
   AND f.is_tiny = 0
   AND f.has_unfilled_placeholder = 0
@@ -103,18 +102,23 @@ spec_filter = """
 sql(rf"""
 CREATE TEMP VIEW spec_outcomes AS
 SELECT f.*,
+       q.spec_quality_score,
+       q.ac_score,
+       q.scenario_score,
+       q.file_ref_score,
        COALESCE(l.n_later_commits, 0) AS n_later_commits,
        COALESCE(l.n_fixlike_later, 0) AS n_fixlike_later
 FROM spec_content_features f
 JOIN eligible_specs e USING (file_url_sha16)
+LEFT JOIN spec_quality_scores q USING (file_url_sha16)
 LEFT JOIN later l USING (file_url_sha16)
 WHERE TRUE {spec_filter}
 """)
 
-# How many commits each rule removed (useful for the write-up)
+# How many commits each rule removed
 print(f"\nCommit filtering ({WINDOW_DAYS}-day window, merges and bots removed):")
 filt = sql(r"""
-SELECT COUNT(*)                                        AS later_commits_total,
+SELECT COUNT(*)                                         AS later_commits_total,
        COUNT(*) FILTER (WHERE NOT in_window)           AS outside_window,
        COUNT(*) FILTER (WHERE in_window AND is_merge)  AS merges_removed,
        COUNT(*) FILTER (WHERE in_window AND NOT is_merge AND is_bot) AS bots_removed,
@@ -132,7 +136,6 @@ SELECT has_acceptance_criteria,
        ROUND(AVG(n_later_commits), 2) AS avg_later_commits,
        ROUND(AVG(n_fixlike_later), 3) AS avg_fixlike_commits,
        ROUND(AVG(CASE WHEN n_fixlike_later > 0 THEN 1 ELSE 0 END), 3) AS share_with_any_fixlike,
-       -- fix-like commits as a share of all kept later commits (adjusts for activity)
        ROUND(SUM(n_fixlike_later) / NULLIF(SUM(n_later_commits), 0), 3) AS fix_rate
 FROM spec_outcomes
 GROUP BY has_acceptance_criteria
@@ -146,7 +149,6 @@ csv_path = RESULTS / f"acceptance_vs_fixes_{suffix}.csv"
 png_path = FIGURES / f"acceptance_vs_fixes_{suffix}.png"
 df.to_csv(csv_path, index=False)
 
-# Figure with readable labels and group sizes
 labels = [
     f"{'Has' if row.has_acceptance_criteria == 1 else 'No'} acceptance criteria\n(n={int(row.n_specs):,})"
     for row in df.itertuples()
@@ -158,16 +160,15 @@ ax.set_title("Fix-like follow-up commits by acceptance criteria\n(merge and bot 
 plt.tight_layout()
 fig.savefig(png_path, dpi=150)
 
-# Pop-up table window: results on top, commit filtering counts underneath
+# Pop-up table window
 table_path = FIGURES / f"results_table_{suffix}.png"
-
 
 def draw_table(ax, frame, title):
     ax.axis("off")
     ax.set_title(title, fontweight="bold", loc="left")
     def fmt(v):
         if isinstance(v, numbers.Real) and float(v).is_integer():
-            return f"{int(v):,}"          # 28413 -> 28,413
+            return f"{int(v):,}"
         return f"{v:g}" if isinstance(v, numbers.Real) else str(v)
 
     cells = [[fmt(v) for v in row] for row in frame.itertuples(index=False)]
@@ -181,7 +182,6 @@ def draw_table(ax, frame, title):
             cell.set_facecolor("#dbe7f3")
             cell.set_height(cell.get_height() * 1.6)
 
-
 table_fig, (ax_res, ax_filt) = plt.subplots(2, 1, figsize=(11, 5),
                                             gridspec_kw={"height_ratios": [3, 2]})
 table_fig.canvas.manager.set_window_title("Results table")
@@ -194,7 +194,61 @@ table_fig.savefig(table_path, dpi=150, bbox_inches="tight")
 
 print(f"\nSaved {csv_path}\n      {png_path}\n      {table_path}")
 
-# Both windows (table and bar chart) pop up; close them to finish.
-# To skip the pop-ups:  python src/explore.py --no-show
+# Rubric Summary Evaluation
+print("\n" + "=" * 80)
+print("SPECIFICATION QUALITY RUBRIC EVALUATION SUMMARY")
+print("=" * 80)
+
+rubric_summary_df = sql(r"""
+SELECT 
+    COUNT(q.file_url_sha16) AS total_scored_specs,
+    ROUND(AVG(q.spec_quality_score), 4) AS avg_overall_score,
+    ROUND(AVG(q.ac_score), 4) AS avg_acceptance_criteria_score,
+    ROUND(AVG(q.scenario_score), 4) AS avg_scenario_score,
+    ROUND(AVG(q.file_ref_score), 4) AS avg_file_ref_score
+FROM spec_quality_scores q
+""").df()
+
+print("\n--- Dimension Scores Across Dataset ---")
+print(rubric_summary_df.to_string(index=False))
+
+tier_df = sql(r"""
+SELECT 
+    CASE 
+        WHEN spec_quality_score >= 0.7 THEN 'High Quality (0.7 - 1.0)'
+        WHEN spec_quality_score >= 0.3 THEN 'Medium Quality (0.3 - 0.7)'
+        ELSE 'Low Quality (0.0 - 0.3)'
+    END AS quality_tier,
+    COUNT(*) AS n_specs,
+    ROUND(AVG(spec_quality_score), 3) AS avg_tier_score,
+    ROUND(AVG(n_later_commits), 2) AS avg_later_commits,
+    ROUND(AVG(n_fixlike_later), 3) AS avg_fixlike_commits,
+    ROUND(AVG(CASE WHEN n_fixlike_later > 0 THEN 1 ELSE 0 END), 3) AS share_with_any_fixlike
+FROM spec_outcomes
+WHERE spec_quality_score IS NOT NULL
+GROUP BY quality_tier
+ORDER BY avg_tier_score DESC
+""").df()
+
+print("\n--- Fix Outcomes Grouped by Rubric Quality Tier ---")
+print(tier_df.to_string(index=False))
+
+detailed_export_df = sql(r"""
+SELECT 
+    file_url_sha16,
+    spec_quality_score,
+    ac_score,
+    scenario_score,
+    file_ref_score,
+    n_later_commits,
+    n_fixlike_later
+FROM spec_outcomes
+WHERE spec_quality_score IS NOT NULL
+""").df()
+
+rubric_csv_path = RESULTS / f"rubric_scores_detailed_{WINDOW_DAYS}d.csv"
+detailed_export_df.to_csv(rubric_csv_path, index=False)
+print(f"\nSaved detailed rubric scores with fix outcomes to: {rubric_csv_path}")
+
 if "--no-show" not in sys.argv:
     plt.show()
