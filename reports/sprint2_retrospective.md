@@ -1,0 +1,2 @@
+## Retrospective 
+Between the Sprint 1 and Sprint 2, we have changed the scope of our project to include the entire dataset instead of the 500 repository one that we were using originally in order to get more data and reduce skewing the results. We also developed a way to filter the commits to remove ones done by bots or merges, as well as keeping the commits recent by having a thirty day filter. Lastly, we developed a rubric with defined criteria to evaluate specs based on acceptance criteria, structured scenarios, and file references.
